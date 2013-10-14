@@ -7,7 +7,7 @@ bl_info = {
     "description": "Animation Tool in one pleace.",
     "warning": "Still work in Progress",
     "wiki_url": "",
-    "tracker_url": "",
+    "tracker_url": "http://blenderartists.org/forum/showthread.php?314474-Addon-Animation-Panel-0-1",
     "category": "Animation"}
 
 
