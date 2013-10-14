@@ -272,13 +272,13 @@ def register():
     bpy.utils.register_class(Pose_library)
 
 def unregister():
-    bpy.utils.register_class(Animation_Panel)
-    bpy.utils.register_class(Tools_ghost)
+    bpy.utils.unregister_class(Animation_Panel)
+    bpy.utils.unregister_class(Tools_ghost)
 #    bpy.utils.register_class(Tools_path)
-    bpy.utils.register_class(Bone_group_specials)
-    bpy.utils.register_class(Bone_groups)
-    bpy.utils.register_class(Pose_library)
+    bpy.utils.unregister_class(Bone_group_specials)
+    bpy.utils.unregister_class(Bone_groups)
+    bpy.utils.unregister_class(Pose_library)
 
 
-#if __name__ == "__main__": 
-#    register()
+if __name__ == "__main__": 
+    register()
