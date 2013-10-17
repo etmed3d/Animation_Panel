@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Animation Panel",
     "author": "Daniel Banasik",
-    "version": (0,1),
+    "version": (0,2),
     "blender": (2, 68, 0),
     "location": "Tool Shelf",
     "description": "Animation Tool in one pleace.",
@@ -19,7 +19,7 @@ from bl_ui.properties_animviz import MotionPathButtonsPanel
 
 class Animation_Panel(bpy.types.Panel):
     bl_context = "posemode"
-    bl_label = "Animation Panel"
+    bl_label = "Animation Panel 0.2"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
 
@@ -36,13 +36,24 @@ class Animation_Panel(bpy.types.Panel):
         ob = context.object
         space = context.space_data
         toolsettings = context.tool_settings
-        screen = context.screen   
+        screen = context.screen
+        userpref = context.user_preferences
+        edit = userpref.edit 
+        arm = context.object.data
+        ad = context.active_object.animation_data
+        interpolation = context.user_preferences.edit.keyframe_new_interpolation_type
 
         if ob:
             layout.template_ID(ob, "data")
         elif arm:
             layout.template_ID(space, "pin_id")               
-
+        try:
+            col = layout.column(align=True)
+            col.prop(ad, "action", slider=True, text="")
+        except:
+            pass
+        col.operator("nla.bake", text="Bake To New Action" ).bake_types={'POSE'}
+        
         col = layout.column(align=True)
         row = col.row()
         row.operator("pose.paths_calculate", text="Calculate...", icon='BONE_DATA') 
@@ -72,17 +83,23 @@ class Animation_Panel(bpy.types.Panel):
 
         row.operator("screen.keyframe_jump", text="", icon='PREV_KEYFRAME').next = False
         row.operator("screen.keyframe_jump", text="", icon='NEXT_KEYFRAME').next = True
+        
         row = layout.row(align=True)
         row.operator("anim.keyframe_clear_v3d", text="Delete Animation", icon='X_VEC')     
         row.operator("anim.keyframe_delete_v3d", text="Delete Key", icon='KEY_DEHLT')
 
-        col = layout.column(align=True)
-        col.operator("nla.bake", text="Bake To New Action" ).bake_types={'POSE'}
-       
         row = layout.row(align=True)
         row.operator("pose.loc_clear", text="Reset Loc")
         row.operator("pose.rot_clear", text="Reset Rot")
-        row.operator("pose.scale_clear", text="Reset Scl") 
+        row.operator("pose.scale_clear", text="Reset Scl")
+        layout.prop(arm, "pose_position", expand=True)
+        col = layout.column()
+        col.prop(arm, "layers", text="")
+        
+        col.separator()        
+        col = layout.column(align=True)
+        col.prop(edit, "keyframe_new_interpolation_type", text='Keys')
+        col.prop(edit, "keyframe_new_handle_type", text="Handles")
       
         col = layout.column()
         col.prop(view, "show_only_render", text="Only Render View")
@@ -263,6 +280,107 @@ class Pose_library(bpy.types.Panel):
             col.operator("pose.paste", text="", icon="PASTEDOWN")
             col.operator("pose.paste", text="", icon="PASTEFLIPUP").flipped=True
 
+
+class Shape_keys(bpy.types.Panel):
+    bl_label = "Shape Keys"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+    bl_context = "objectmode"
+    COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_GAME'}
+
+    @classmethod
+    def poll(cls, context):
+        engine = context.scene.render.engine
+        obj = context.object
+        return (obj and obj.type in {'MESH', 'LATTICE', 'CURVE', 'SURFACE'} and (engine in cls.COMPAT_ENGINES))
+
+    def draw(self, context):
+        layout = self.layout
+
+        ob = context.object
+        key = ob.data.shape_keys
+        kb = ob.active_shape_key
+
+        enable_edit = ob.mode != 'EDIT'
+        enable_edit_value = False
+
+        if ob.show_only_shape_key is False:
+            if enable_edit or (ob.type == 'MESH' and ob.use_shape_key_edit_mode):
+                enable_edit_value = True
+
+        row = layout.row()
+
+        rows = 2
+        if kb:
+            rows = 5
+        row.template_list("MESH_UL_shape_keys", "", key, "key_blocks", ob, "active_shape_key_index", rows=rows)
+
+        col = row.column()
+
+        sub = col.column(align=True)
+        sub.operator("object.shape_key_add", icon='ZOOMIN', text="").from_mix = False
+        sub.operator("object.shape_key_remove", icon='ZOOMOUT', text="").all = False
+        sub.menu("MESH_MT_shape_key_specials", icon='DOWNARROW_HLT', text="")
+
+        if kb:
+            col.separator()
+
+            sub = col.column(align=True)
+            sub.operator("object.shape_key_move", icon='TRIA_UP', text="").type = 'UP'
+            sub.operator("object.shape_key_move", icon='TRIA_DOWN', text="").type = 'DOWN'
+
+            split = layout.split(percentage=0.4)
+            row = split.row()
+            row.enabled = enable_edit
+            row.prop(key, "use_relative")
+
+            row = split.row()
+            row.alignment = 'RIGHT'
+
+            sub = row.row(align=True)
+            sub.label()  # XXX, for alignment only
+            subsub = sub.row(align=True)
+            subsub.active = enable_edit_value
+            subsub.prop(ob, "show_only_shape_key", text="")
+            sub.prop(ob, "use_shape_key_edit_mode", text="")
+
+            sub = row.row()
+            if key.use_relative:
+                sub.operator("object.shape_key_clear", icon='X', text="")
+            else:
+                sub.operator("object.shape_key_retime", icon='RECOVER_LAST', text="")
+
+            row = layout.row()
+            row.prop(kb, "name")
+
+            if key.use_relative:
+                if ob.active_shape_key_index != 0:
+                    row = layout.row()
+                    row.active = enable_edit_value
+                    row.prop(kb, "value")
+
+                    split = layout.split()
+
+                    col = split.column(align=True)
+                    col.active = enable_edit_value
+                    col.label(text="Range:")
+                    col.prop(kb, "slider_min", text="Min")
+                    col.prop(kb, "slider_max", text="Max")
+
+                    col = split.column(align=True)
+                    col.active = enable_edit_value
+                    col.label(text="Blend:")
+                    col.prop_search(kb, "vertex_group", ob, "vertex_groups", text="")
+                    col.prop_search(kb, "relative_key", key, "key_blocks", text="")
+
+            else:
+                layout.prop(kb, "interpolation")
+                row = layout.column()
+                row.active = enable_edit_value
+                row.prop(key, "eval_time")
+                row.prop(key, "slurph")
+
+
 def register():
     bpy.utils.register_class(Animation_Panel)
     bpy.utils.register_class(Tools_ghost)
@@ -270,6 +388,7 @@ def register():
     bpy.utils.register_class(Bone_group_specials)
     bpy.utils.register_class(Bone_groups)
     bpy.utils.register_class(Pose_library)
+    bpy.utils.register_class(Shape_keys)
 
 def unregister():
     bpy.utils.unregister_class(Animation_Panel)
@@ -278,6 +397,7 @@ def unregister():
     bpy.utils.unregister_class(Bone_group_specials)
     bpy.utils.unregister_class(Bone_groups)
     bpy.utils.unregister_class(Pose_library)
+    bpy.utils.unregister_class(Shape_keys)
 
 
 if __name__ == "__main__": 
