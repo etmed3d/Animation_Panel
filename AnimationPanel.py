@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Animation Panel",
-    "author": "Daniel Banasik",
-    "version": (0,2),
+    "author": "Floo, liero",
+    "version": (0,3),
     "blender": (2, 68, 0),
     "location": "Tool Shelf",
     "description": "Animation Tool in one pleace.",
@@ -19,7 +19,7 @@ from bl_ui.properties_animviz import MotionPathButtonsPanel
 
 class Animation_Panel(bpy.types.Panel):
     bl_context = "posemode"
-    bl_label = "Animation Panel 0.2"
+    bl_label = "Animation Panel 0.3"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
 
@@ -80,7 +80,7 @@ class Animation_Panel(bpy.types.Panel):
                 subsub.prop(toolsettings, "use_record_with_nla", toggle=True)   
         
         row.prop_search(scene.keying_sets_all, "active", scene, "keying_sets_all", text="")
-
+        row.operator("screen.animation_play", text="", icon='PLAY')
         row.operator("screen.keyframe_jump", text="", icon='PREV_KEYFRAME').next = False
         row.operator("screen.keyframe_jump", text="", icon='NEXT_KEYFRAME').next = True
         
@@ -93,25 +93,187 @@ class Animation_Panel(bpy.types.Panel):
         row.operator("pose.rot_clear", text="Reset Rot")
         row.operator("pose.scale_clear", text="Reset Scl")
         layout.prop(arm, "pose_position", expand=True)
+        
         col = layout.column()
         col.prop(arm, "layers", text="")
+        col.operator("armature.layers_show_all", text="Armature Show ALL Layers")
         
-        col.separator()        
         col = layout.column(align=True)
         col.prop(edit, "keyframe_new_interpolation_type", text='Keys')
         col.prop(edit, "keyframe_new_handle_type", text="Handles")
-      
-        col = layout.column()
-        col.prop(view, "show_only_render", text="Only Render View")
-        col.prop(ob, "show_x_ray", text="X-Ray View")
+              
+        row = layout.row()
+        row.prop(rd, "use_simplify", text="Simplify")
+        row.prop(rd, "simplify_subdivision", text="levels")
+        
+        row = layout.row()
+        row.prop(view, "show_only_render", text="Only Render View")
+        row.prop(ob, "show_x_ray", text="X-Ray View")
 
         col= layout.column(align=True)
         col.label(text="Playblast:")
+        
         row = layout.row(align=True)     
         row.operator("render.opengl", text="Still", icon='RENDER_STILL')
         row.operator("render.opengl", text="Animation", icon='RENDER_ANIMATION').animation = True
         row.operator("render.play_rendered_anim", text="Play", icon='PLAY')
+        row = layout.row()
+        row.menu("RENDER_MT_presets", text=bpy.types.RENDER_MT_presets.bl_label)
+        row = layout.row(align=True)
+        row.prop(scene, "use_preview_range", text="", toggle=True)
+        if not scene.use_preview_range:
+            row.prop(scene, "frame_start", text="Start")
+            row.prop(scene, "frame_end", text="End")
+        else:
+            row.prop(scene, "frame_preview_start", text="Start")
+            row.prop(scene, "frame_preview_end", text="End")
 
+### delete keyframes in a range for selected bones
+class DELETE_KEYFRAMES_RANGE(bpy.types.Operator):
+    bl_idname = "pose.delete_keyframes"
+    bl_label = "Delete Keyframes"
+    bl_options = {'REGISTER', 'UNDO'}
+    bl_description = "Delete all keyframes for selected bones in a time range"
+
+    @classmethod
+    def poll(cls, context):
+        obj = bpy.context.object
+        return obj.type == 'ARMATURE' and obj.mode == 'POSE'
+
+    def execute(self, context):
+        wm = bpy.context.window_manager
+        arm = bpy.context.object
+        act = arm.animation_data.action
+        delete = []
+
+        # get selected bones names
+        sel = [b.name for b in arm.data.bones if b.select]
+
+        # get bone names from fcurve data_path
+        for fcu in act.fcurves:
+            name = fcu.data_path.split(sep='"', maxsplit=2)[1]
+
+            # check if bone is selected and got keyframes in range
+            if name in sel:
+                for kp in fcu.keyframe_points:
+                    if wm.del_range_start <= kp.co[0] <= wm.del_range_end:
+                        delete.append((fcu.data_path, kp.co[0]))
+
+        # delete keyframes
+        for kp in delete:
+            arm.keyframe_delete(kp[0], index=-1, frame=kp[1])
+
+        context.scene.frame_set(context.scene.frame_current)
+        return {'FINISHED'}
+    
+### move keyframes
+drag_max = 30
+
+def acciones(objetos):
+    act = []
+    for obj in objetos:
+        try:
+            if obj.animation_data:
+                act.append(obj.animation_data.action)
+            if obj.data.shape_keys and obj.data.shape_keys.animation_data:
+                act.append(obj.data.shape_keys.animation_data.action)
+        except:
+            pass
+    total = {} 
+    for a in act: total[a] = 1 
+    return total.keys()
+
+def offset(act, val):
+    for fcu in act.fcurves:
+        if bpy.context.window_manager.sel:
+            puntox = [p for p in fcu.keyframe_points if p.select_control_point]
+        else:
+            puntox = fcu.keyframe_points
+        for k in puntox:
+            k.co[0] += val
+            k.handle_left[0] += val
+            k.handle_right[0] += val
+            
+### select keys       
+def drag(self, context):
+    wm = context.window_manager
+    if bpy.context.selected_objects:
+        for act in acciones(bpy.context.selected_objects):
+            offset (act, wm.drag)
+    if wm.drag: wm.drag = 0
+    refresco()
+
+def refresco():
+    f = bpy.context.scene.frame_current
+    bpy.context.scene.frame_set(f)
+    
+### apply keys
+class Apply(bpy.types.Operator):
+    bl_idname = 'offset.apply'
+    bl_label = 'Apply'
+    bl_description = 'Move Keys to selected objects'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return(bpy.context.selected_objects)
+
+    def execute(self, context):
+        for act in acciones(bpy.context.selected_objects):
+            offset(act, context.window_manager.off)
+        refresco()
+        return{'FINISHED'}
+    
+### reset    
+class Reset(bpy.types.Operator):
+    bl_idname = 'offset.reset'
+    bl_label = 'Reset'
+    bl_description = 'Reset sliders to zero'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        context.window_manager.off = 0
+        return{'FINISHED'} 
+###
+class MOVE_KEYS(bpy.types.Panel):
+    bl_label = 'Move & Delete Keys'
+    bl_context = "posemode"
+    bl_options = {'DEFAULT_CLOSED'}
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+
+    def draw(self, context):
+        wm = context.window_manager
+        layout = self.layout
+        layout.prop(wm,'drag',slider=True)
+        column = layout.column(align=True)
+        column.prop(wm,'off',slider=False)
+        column.prop(wm,'sel')
+        
+        row = layout.row(align=True)
+        row.operator('offset.reset', icon = "FILE_REFRESH")
+        row.operator('offset.apply', icon = "FILE_TICK")
+        col= layout.column(align=True)
+        col.label(text="Delete Range Keys:") 
+        
+        layout = self.layout
+        row = layout.row()
+        row.prop(wm,'del_range_start')
+        row.prop(wm,'del_range_end')
+        layout.operator('pose.delete_keyframes',icon='KEY_DEHLT')
+
+bpy.types.WindowManager.off = bpy.props.IntProperty(name='Move Keys', min=-1000, soft_min=-250, max=1000, soft_max=250, default=0, description='Offset value for f-curves in selected objects')
+bpy.types.WindowManager.drag = bpy.props.IntProperty(name='Drag', min=-drag_max, max=drag_max, default=0, description='Drag to offset keyframes', update=drag)
+bpy.types.WindowManager.sel = bpy.props.BoolProperty(name='Selected keys', description='Only offset Selected keyframes in selected objects')
+
+clases = [Apply, Reset, MOVE_KEYS]
+
+bpy.types.WindowManager.del_range_start=bpy.props.IntProperty(name='From', soft_min=0, min=-5000, soft_max=250, 
+        max=5000, default=25, description='Delete keyframes range start')
+bpy.types.WindowManager.del_range_end=bpy.props.IntProperty(name='To', soft_min=0, min=-5000, soft_max=250, 
+        max=5000, default=75, description='Delete keyframes range end')
+
+### ghost
 class Tools_ghost(bpy.types.Panel):
     bl_context = "posemode"
     bl_label = "Ghost Object"
@@ -152,7 +314,8 @@ class Tools_ghost(bpy.types.Panel):
 #        avs = ob.animation_visualization
 #        mpath = ob.motion_path
 #        MotionPathButtonsPanel.draw_settings(self, context, avs, mpath, bones=True )
-        
+
+### bone groups        
 class Bone_group_specials(bpy.types.Menu):
     bl_label = "Bone Group Specials"
     bl_context = "posemode"
@@ -227,7 +390,8 @@ class Bone_groups(bpy.types.Panel):
         sub = row.row(align=True)
         sub.operator("pose.group_select", text="Select")
         sub.operator("pose.group_deselect", text="Deselect")
-
+        
+### pose mode
 class Pose_library(bpy.types.Panel):
     bl_label = "Pose Library"
     bl_context = "posemode"
@@ -280,7 +444,7 @@ class Pose_library(bpy.types.Panel):
             col.operator("pose.paste", text="", icon="PASTEDOWN")
             col.operator("pose.paste", text="", icon="PASTEFLIPUP").flipped=True
 
-
+### shape key
 class Shape_keys(bpy.types.Panel):
     bl_label = "Shape Keys"
     bl_space_type = 'VIEW_3D'
@@ -389,6 +553,9 @@ def register():
     bpy.utils.register_class(Bone_groups)
     bpy.utils.register_class(Pose_library)
     bpy.utils.register_class(Shape_keys)
+    bpy.utils.register_class(DELETE_KEYFRAMES_RANGE)
+    for c in clases:
+        bpy.utils.register_class(c)
 
 def unregister():
     bpy.utils.unregister_class(Animation_Panel)
@@ -398,7 +565,11 @@ def unregister():
     bpy.utils.unregister_class(Bone_groups)
     bpy.utils.unregister_class(Pose_library)
     bpy.utils.unregister_class(Shape_keys)
-
+    bpy.utils.unregister_class(DELETE_KEYFRAMES_RANGE)
+    for c in clases:
+        bpy.utils.unregister_class(c)
 
 if __name__ == "__main__": 
     register()
+
+
