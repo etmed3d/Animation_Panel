@@ -1,11 +1,11 @@
 bl_info = {
     "name": "Animation Panel",
-    "author": "Floo, liero",
-    "version": (0,3),
+    "author": "Floo, liero, CoDEmanX",
+    "version": (0,4),
     "blender": (2, 68, 0),
     "location": "Tool Shelf",
     "description": "Animation Tool in one pleace.",
-    "warning": "Still work in Progress",
+    "warning": "Still Work In Progress",
     "wiki_url": "",
     "tracker_url": "http://blenderartists.org/forum/showthread.php?314474-Addon-Animation-Panel-0-1",
     "category": "Animation"}
@@ -15,11 +15,169 @@ import bpy
 from bpy.types import Panel, Menu
 from rna_prop_ui import PropertyPanel
 from bl_ui.properties_animviz import MotionPathButtonsPanel
+from math import *
+from mathutils import Matrix
 
+
+def snap_posebone_to_posebone( posebone, target, loc=True, rot=True ):
+
+    if posebone.parent != None:
+        parent_inverse = posebone.parent.matrix.copy()
+        parent_inverse.invert()
+        parent_local_inverse = posebone.parent.bone.matrix_local.copy()
+        parent_local_inverse.invert()
+        matrix_local = posebone.bone.matrix_local.copy()
+    else:
+        parent_inverse = parent_local_inverse = matrix_local = mathutils.Matrix()
+    parent_offset = parent_local_inverse * posebone.bone.matrix_local.copy() 
+    parent_offset.invert()
+    m = parent_offset * parent_inverse
+    if type(target) == mathutils.Matrix:
+        m *= target
+    elif type(target) == bpy.types.PoseBone:
+        m *= target.matrix  
+    if loc:
+        posebone.location = m.to_translation()
+    if rot:
+        if posebone.rotation_mode == 'QUATERNION':
+            posebone.rotation_quaternion = m.to_quaternion()
+        else:
+            posebone.rotation_euler = m.to_euler( posebone.rotation_mode )    
+                   
+class bone_snap_rotation(bpy.types.Operator):
+    bl_idname = "armature.bone_snap_rotation"
+    bl_label = "Bone Snap Rotation"
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.active_object)
+    
+    def execute(self, context):
+        ob = context.active_object    
+        target = context.active_pose_bone
+        source = None
+        num = 0
+        for n in bpy.context.scene.objects:
+            if n.select:
+                num += 1
+        if num > 1:
+            for n in bpy.context.scene.objects:
+                if n.select and n != ob:
+                    source = n
+                    break
+            if source == None:
+                print("Mist ... source == None")
+        if num == 1 and ob.type == 'ARMATURE': 
+            for n in ob.pose.bones:
+                if n.bone.select and n != target:
+                    snap_posebone_to_posebone( n, target, loc=False, rot=True )
+                    
+        elif num > 1:
+            if ob.type == source.type == 'ARMATURE':
+                
+                src_posebone = None
+                for n in source.pose.bones:
+                    if n.bone.select:
+                        src_posebone = n
+                        break
+                if src_posebone != None:
+                    bone_match_rotation( source, src_posebone, target.matrix)
+                else:
+                    print("ERROR")
+                
+                        
+        return {'FINISHED'}
+    
+class bone_snap_location(bpy.types.Operator):
+    '''Match rotation betwween first and second bone or object'''
+    bl_idname = "armature.bone_snap_location"
+    bl_label = "Bone Snap Location"
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object is not None
+    
+    def execute(self, context):
+        ob = context.active_object    
+        target = context.active_pose_bone
+        source = None
+        num = 0
+        for n in bpy.context.scene.objects:
+            if n.select:
+                num += 1     
+        if num > 1:
+            for n in bpy.context.scene.objects:
+                if n.select and n != ob:
+                    source = n
+                    break
+            if source == None:
+                print("Mist ... source == None")
+        if num == 1 and ob.type == 'ARMATURE':
+            for n in ob.pose.bones:
+                if n.bone.select and n != target:
+                    snap_posebone_to_posebone( n, target, loc=True, rot=False )
+                    
+        elif num > 1:
+            if ob.type == source.type == 'ARMATURE':               
+                src_posebone = None
+                for n in source.pose.bones:
+                    if n.bone.select:
+                        src_posebone = n
+                        break
+                if src_posebone != None:
+                    bone_match_rotation( source, src_posebone, target.matrix)
+                else:
+                    print("ERROR")
+                    
+        return {'FINISHED'}
+
+class bone_snap_locrot(bpy.types.Operator):
+    bl_idname = "armature.bone_snap_locrot"
+    bl_label = "Bone Snap Loc Rot"
+    
+    @classmethod
+    def poll(cls, context):
+        return (context.active_object)
+    
+    def execute(self, context):
+        ob = context.active_object    
+        target = context.active_pose_bone
+        source = None
+        num = 0
+        for n in bpy.context.scene.objects:
+            if n.select:
+                num += 1
+        if num > 1:
+            for n in bpy.context.scene.objects:
+                if n.select and n != ob:
+                    source = n
+                    break
+            if source == None:
+                print("Mist ... source == None")
+        if num == 1 and ob.type == 'ARMATURE': 
+            for n in ob.pose.bones:
+                if n.bone.select and n != target:
+                    snap_posebone_to_posebone( n, target, loc=True, rot=True )
+                    
+        elif num > 1:
+            if ob.type == source.type == 'ARMATURE':
+                
+                src_posebone = None
+                for n in source.pose.bones:
+                    if n.bone.select:
+                        src_posebone = n
+                        break
+                if src_posebone != None:
+                    bone_match_rotation( source, src_posebone, target.matrix)
+                else:
+                    print("ERROR")
+                
+                        
+        return {'FINISHED'}
 
 class Animation_Panel(bpy.types.Panel):
     bl_context = "posemode"
-    bl_label = "Animation Panel 0.3"
+    bl_label = "Animation Panel 0.4"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
 
@@ -88,6 +246,10 @@ class Animation_Panel(bpy.types.Panel):
         row.operator("anim.keyframe_clear_v3d", text="Delete Animation", icon='X_VEC')     
         row.operator("anim.keyframe_delete_v3d", text="Delete Key", icon='KEY_DEHLT')
 
+#        row = layout.row(align=True)
+#        row.operator(bone_snap_location.bl_idname, text="Reset Loc")
+#        row.operator(bone_snap_rotation.bl_idname, text="Reset Rot")
+#        row.operator(bone_snap_locrot.bl_idname, text="Reset Scl")
         row = layout.row(align=True)
         row.operator("pose.loc_clear", text="Reset Loc")
         row.operator("pose.rot_clear", text="Reset Rot")
@@ -320,7 +482,8 @@ class Bone_group_specials(bpy.types.Menu):
     bl_label = "Bone Group Specials"
     bl_context = "posemode"
     bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
+    bl_region_type = 'UI'
+#    bl_region_type = 'TOOLS'
     
     def draw(self, context):
         layout = self.layout
@@ -332,7 +495,8 @@ class Bone_groups(bpy.types.Panel):
     bl_context = "posemode"
     bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
+    bl_region_type = 'UI'  
+#    bl_region_type = 'TOOLS'
     
     @classmethod
     def poll(cls, context):
@@ -397,7 +561,8 @@ class Pose_library(bpy.types.Panel):
     bl_context = "posemode"
     bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
+    bl_region_type = 'UI'    
+#    bl_region_type = 'TOOLS'
     
     @classmethod
     def poll(cls, context):
@@ -442,13 +607,18 @@ class Pose_library(bpy.types.Panel):
                 
             col.operator("pose.copy", text="", icon="COPYDOWN")
             col.operator("pose.paste", text="", icon="PASTEDOWN")
-            col.operator("pose.paste", text="", icon="PASTEFLIPUP").flipped=True
+            col.operator("pose.paste", text="", icon="PASTEFLIPUP").flipped=True        
+            col = layout.column(align=True)
+            col.operator(bone_snap_location.bl_idname)
+            col.operator(bone_snap_rotation.bl_idname)
+            col.operator(bone_snap_locrot.bl_idname)  
 
 ### shape key
 class Shape_keys(bpy.types.Panel):
     bl_label = "Shape Keys"
     bl_space_type = 'VIEW_3D'
-    bl_region_type = 'TOOLS'
+    bl_region_type = 'UI'    
+#    bl_region_type = 'TOOLS'
     bl_context = "objectmode"
     COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_GAME'}
 
@@ -554,8 +724,12 @@ def register():
     bpy.utils.register_class(Pose_library)
     bpy.utils.register_class(Shape_keys)
     bpy.utils.register_class(DELETE_KEYFRAMES_RANGE)
+    bpy.utils.register_class(bone_snap_rotation)
+    bpy.utils.register_class(bone_snap_location)    
+    bpy.utils.register_class(bone_snap_locrot)
     for c in clases:
         bpy.utils.register_class(c)
+       
 
 def unregister():
     bpy.utils.unregister_class(Animation_Panel)
@@ -566,10 +740,17 @@ def unregister():
     bpy.utils.unregister_class(Pose_library)
     bpy.utils.unregister_class(Shape_keys)
     bpy.utils.unregister_class(DELETE_KEYFRAMES_RANGE)
+    bpy.utils.unregister_class(bone_snap_rotation)
+    bpy.utils.unregister_class(bone_snap_location)
+    bpy.utils.unregister_class(bone_snap_locrot)   
     for c in clases:
         bpy.utils.unregister_class(c)
+    
 
 if __name__ == "__main__": 
     register()
 
 
+#bone_snap_rotation
+#bone_snap_location
+#bone_snap_locrot
