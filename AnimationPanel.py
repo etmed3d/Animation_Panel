@@ -1,8 +1,8 @@
 bl_info = {
     "name": "Animation Panel",
     "author": "Floo, liero, CoDEmanX",
-    "version": (0,4),
-    "blender": (2, 68, 0),
+    "version": (0,5),
+    "blender": (2, 7, 0),
     "location": "Tool Shelf",
     "description": "Animation Tool in one pleace.",
     "warning": "Still Work In Progress",
@@ -177,10 +177,10 @@ class bone_snap_locrot(bpy.types.Operator):
 
 class Animation_Panel(bpy.types.Panel):
     bl_context = "posemode"
-    bl_label = "Animation Panel 0.4"
+    bl_label = "Animation Panel 0.5"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
-
+    bl_category = "Animation Panel"
 
     def draw(self, context):
         layout = self.layout     
@@ -296,6 +296,7 @@ class DELETE_KEYFRAMES_RANGE(bpy.types.Operator):
     bl_label = "Delete Keyframes"
     bl_options = {'REGISTER', 'UNDO'}
     bl_description = "Delete all keyframes for selected bones in a time range"
+    bl_category = "Animation Panel"
 
     @classmethod
     def poll(cls, context):
@@ -403,6 +404,7 @@ class MOVE_KEYS(bpy.types.Panel):
     bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
+    bl_category = "Animation Panel"
 
     def draw(self, context):
         wm = context.window_manager
@@ -442,6 +444,7 @@ class Tools_ghost(bpy.types.Panel):
     bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
+    bl_category = "Animation Panel"    
      
     def draw(self, context):
         layout = self.layout
